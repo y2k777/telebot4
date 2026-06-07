@@ -567,8 +567,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ── Order Status ────────────────────────────────────────
     if user.id in status_waiting:
-        status_waiting.po
-p(user.id)
+        status_waiting.pop(user.id)
         row = cursor.execute(
             "SELECT product, status FROM orders WHERE order_id=? AND user_id=?",
             (text.strip(), user.id)
@@ -581,6 +580,8 @@ p(user.id)
                 reply_markup=main_menu()
             )
         return
+
+
 
     # ── Order Flow ──────────────────────────────────────────
     if user.id in order_drafts:
