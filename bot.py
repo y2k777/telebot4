@@ -14,13 +14,13 @@ from telegram.ext import (
 # CONFIG — change these values
 # =========================================================
 
-BOT_TOKEN      = "8907126373:AAG9-vWoViC-r7ofEA6bzKoWDMtQAh1b-dM"
+BOT_TOKEN      = os.environ["BOT_TOKEN"]
 STAFF_CHAT_ID  = -1003941910641
 GROUP_LINK     = "https://t.me/cornballsv2"
 LTC_ADDRESS    = "ltc1qwzqh92kggfelh59f8jzud2qkxr8xemfu29mcrw"
 ADMIN_IDS      = {8910478622}
 
-LEAKOSINT_KEY  = "8517859232:l4nrsW5Y"
+LEAKOSINT_KEY  = os.environ["LEAKOSINT_KEY"]
 LEAKOSINT_URL  = "https://leakosintapi.com/"
 
 ORDER_TIMEOUT  = 10800  # 3 hours in seconds
@@ -292,6 +292,42 @@ Q: Is this legal?
 A: For lawful use only. You are responsible for how you use results.
 
 
+Some common lookups:
+
+- IntelX Lookups - 
+IX lookup - Uses System ID to download an Intelx breach / log.
+
+- Basic Persons Search -
+A basic person search. Will gather basic details about a person, like age and location, phone and email.
+
+- Comprehensive Person Search -
+Extensive PII report, including family, address history and marriage certificates.
+
+- Full Report -
+Full background check - Includes TLOxp, DL, fish / hunt and more, comprehensive person search and criminal records.
+
+- Social Catfish Lookup -
+A free lookup from socialcatfish.com. - FREE
+
+- Osint.Industries - 
+Multi platform OSINT checker and verifier - checks websites such as Facebook, Snapchat, Apple, Google, etc...
+
+- Credit Report - 
+Get a credit report on your target.
+
+- Dl Search -
+Provides you with the Dl of the target.
+
+- NPD Search -
+Provides you with information from the National Public Database.
+
+- AI Search -
+Uses AI to gather and compile large amounts of information about targets. May not be 100% accurate.
+
+- TLO -
+Performs a TLO on your target.
+
+
 If you don't understand what to do or want to learn more about a specific lookup, feel free to DM us.
 I can't get too specific as we don't want to get this bot banned.
 ⚠️ No fake serial codes. Abuse = restricted access.
@@ -531,7 +567,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ── Order Status ────────────────────────────────────────
     if user.id in status_waiting:
-        status_waiting.pop(user.id)
+        status_waiting.po
+p(user.id)
         row = cursor.execute(
             "SELECT product, status FROM orders WHERE order_id=? AND user_id=?",
             (text.strip(), user.id)
