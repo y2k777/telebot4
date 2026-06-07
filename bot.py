@@ -135,14 +135,15 @@ PRODUCT_CATEGORIES = {
     "csint": {
         "name": "▶︎ CSINT Lookups",
         "products": {
-            "npd":     {"name": "NPD",                "credit_cost": 15},
-            "ssn":     {"name": "SSN + DOB",          "credit_cost": 20},
-            "tlo":     {"name": "TLO",                "credit_cost": 25},
-            "dl":      {"name": "DL Lookup",          "credit_cost": 32},
-            "hunt":    {"name": "Hunt & Fish LN",     "credit_cost": 14},
-            "creport": {"name": "Credit Report",      "credit_cost": 35},
-            "bank":    {"name": "Bankruptcy Records", "credit_cost": 8},
-            "dea":     {"name": "DEA LN",             "credit_cost": 8},
+            "npd":     {"name": "NPD",                 "credit_cost": 15},
+            "ssn":     {"name": "SSN + DOB",           "credit_cost": 20},
+            "tlo":     {"name": "TLO",                 "credit_cost": 25},
+            "dl":      {"name": "DL Lookup",           "credit_cost": 32},
+            "hunt":    {"name": "Hunt & Fish LN",      "credit_cost": 14},
+            "creport": {"name": "Credit Report",       "credit_cost": 35},
+            "prop":    {"name": "Propstream Skiptrace","credit_cost": 20},
+            "bank":    {"name": "Bankruptcy Records",  "credit_cost": 8},
+            "dea":     {"name": "DEA LN",              "credit_cost": 8},
         }
     },
 
@@ -277,6 +278,15 @@ WELCOME_TEXT = """
 INFO_TEXT = """
 ℹ️ INFORMATION
 
+How to use bot:
+1. You need to type /start - it will automatically make you an account when you do.
+2. Go into your account by clicking on the button, then click top-up.
+3. Top up the ammount of credits you want. You need to top-up at least $5 worth of credits.
+4. After you have sent the LTC, wait shorty. Once we review payment we will send your lookup.
+
+NOTE: 1 credit is valued at 0.50 cents USD.
+
+
 Q: How do I get free items?
 A: Just click them — 0 credits needed.
 
@@ -291,42 +301,6 @@ A: My Account → Top Up Credits → pick a package → send LTC.
 
 Q: Is this legal?
 A: For lawful use only. You are responsible for how you use results.
-
-
-Some common lookups:
-
-- IntelX Lookups - 
-IX lookup - Uses System ID to download an Intelx breach / log.
-
-- Basic Persons Search -
-A basic person search. Will gather basic details about a person, like age and location, phone and email.
-
-- Comprehensive Person Search -
-Extensive PII report, including family, address history and marriage certificates.
-
-- Full Report -
-Full background check - Includes TLOxp, DL, fish / hunt and more, comprehensive person search and criminal records.
-
-- Social Catfish Lookup -
-A free lookup from socialcatfish.com. - FREE
-
-- Osint.Industries - 
-Multi platform OSINT checker and verifier - checks websites such as Facebook, Snapchat, Apple, Google, etc...
-
-- Credit Report - 
-Get a credit report on your target.
-
-- Dl Search -
-Provides you with the Dl of the target.
-
-- NPD Search -
-Provides you with information from the National Public Database.
-
-- AI Search -
-Uses AI to gather and compile large amounts of information about targets. May not be 100% accurate.
-
-- TLO -
-Performs a TLO on your target.
 
 
 If you don't understand what to do or want to learn more about a specific lookup, feel free to DM us.
