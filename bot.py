@@ -1508,7 +1508,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ── OSINT Lookup ────────────────────────────────────────
     elif q.data == "lookup":
         await q.edit_message_text(
-            "LOOKUP\n\n"
+            "🔎 LOOKUP\n\n"
             "Choose a search type:\n\n"
             "Free Breach Search — leak database scan (FREE, censored)\n"
             f"Full Breach Search — all fields ({BREACH_FULL_COST} credit)\n"
