@@ -9,6 +9,14 @@ import requests
 import secrets
 import sqlite3
 import threading
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    force=True,
+)
+log = logging.getLogger(__name__)
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -63,9 +71,10 @@ ORDER_TIMEOUT  = 10800  # 3 hours in seconds
 #   topups   — one row per credit top-up request
 # =========================================================
 
-conn     = sqlite3.connect("bot.db", check_same_thread=False)
+conn     = sqlite3.connect("bot.db", check_same_thread=False, timeout=30)
+conn.execute("PRAGMA journal_mode=WAL")
 cursor   = conn.cursor()
-db_lock  = threading.Lock()
+db_lock  = threading.RLock()
 
 cursor.executescript("""
 CREATE TABLE IF NOT EXISTS accounts (
@@ -564,7 +573,7 @@ async def poll_payment(
                     if _topup_status(topup_id) != "Awaiting Payment":
                         return
         except Exception as e:
-            print(f"[poller] {topup_id} error: {e}")
+            log.exception("[poller] %s error: %s", topup_id, e)
 
         await asyncio.sleep(60)
 
@@ -1455,14 +1464,15 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         topup_id = gen_topup_id()
         expires = int(time.time()) + ORDER_TIMEOUT
 
-        cursor.execute(
-            "INSERT INTO topups VALUES (?,?,?,?,?,?,?,?,?)",
-            (
-                topup_id, user.id, acc["serial_code"], pkg["credits"],
-                pkg["price"], ltc_addr, None, "Awaiting Payment", int(time.time()),
-            ),
-        )
-        conn.commit()
+        with db_lock:
+            cursor.execute(
+                "INSERT INTO topups VALUES (?,?,?,?,?,?,?,?,?)",
+                (
+                    topup_id, user.id, acc["serial_code"], pkg["credits"],
+                    pkg["price"], ltc_addr, None, "Awaiting Payment", int(time.time()),
+                ),
+            )
+            conn.commit()
 
         context.application.create_task(
             poll_payment(
@@ -2358,7 +2368,16 @@ async def createvoucher_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # =========================================================
 
 async def post_init(application):
-    await resume_pending_topups(application)
+    """Resume pending top-ups after the polling loop is running."""
+    async def _resume_when_ready():
+        await asyncio.sleep(2)
+        await resume_pending_topups(application)
+
+    asyncio.create_task(_resume_when_ready())
+
+
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
+    log.exception("Unhandled bot error", exc_info=context.error)
 
 
 app = (
@@ -2396,7 +2415,9 @@ app.add_handler(CommandHandler("createvoucher", createvoucher_cmd))
 app.add_handler(CommandHandler("menu",             menu_cmd))
 app.add_handler(CommandHandler("balance",          balance_cmd))
 app.add_handler(CommandHandler("order",            order_cmd))
-app.add_handler(MessageHandler(filters.COMMAND,    unknown_cmd)) 
+app.add_handler(MessageHandler(filters.COMMAND,    unknown_cmd))
+app.add_error_handler(error_handler)
+
 if __name__ == "__main__":
-    print("🔥 v2 running...")
+    log.info("Bot starting...")
     app.run_polling()
