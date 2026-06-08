@@ -539,6 +539,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "🔑 Enter your Serial Code to confirm the order:\n"
                 "(Find it in My Account)"
             )
+            return
 
         # Step 2: user sends their serial code
         elif draft["step"] == "serial":
