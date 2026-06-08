@@ -1510,9 +1510,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await q.edit_message_text(
             "LOOKUP\n\n"
             "Choose a search type:\n\n"
-            "Breach Search — leak database scan (FREE, censored)\n"
+            "Free Breach Search — leak database scan (FREE, censored)\n"
             f"Full Breach Search — all fields ({BREACH_FULL_COST} credit)\n"
-            f"Live OSINT Lookup — live platform scan ({LIVE_OSINT_COST} credits)\n"
+            f"OSINT.SX Lookup — live platform scan ({LIVE_OSINT_COST} credits)\n"
             f"Enformion Person Search ({ENDATO_PERSON_COST} credits)",
             reply_markup=lookup_menu(),
         )
