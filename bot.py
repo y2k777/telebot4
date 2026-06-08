@@ -527,37 +527,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     text = update.message.text
 
-    # ── OSINT Lookup ────────────────────────────────────────
-    if user.id in lookup_waiting:
-        lookup_waiting.pop(user.id)
-        msg = await update.message.reply_text("🔎 Searching...")
-        try:
-            data    = leakosint_search(text)
-            records = [(db, rec) for db, d in data.get("List", {}).items() for rec in d.get("Data", [])]
-            lookup_pages[user.id] = {"records": records, "page": 0}
-            await msg.edit_text(format_page(records, 0), reply_markup=page_keyboard(user.id))
-        except Exception as e:
-            await msg.edit_text(f"❌ Failed: {e}")
-        return
-
-    # ── Order Status ────────────────────────────────────────
-    if user.id in status_waiting:
-        status_waiting.pop(user.id)
-        row = cursor.execute(
-            "SELECT product, status FROM orders WHERE order_id=? AND user_id=?",
-            (text.strip(), user.id)
-        ).fetchone()
-        if not row:
-            await update.message.reply_text("❌ Order Error - Please check your order and try again.")
-        else:
-            await update.message.reply_text(
-                f"📋 ORDER STATUS\n\n🆔 {text.strip()}\n📦 {row[0]}\n📌 {row[1]}",
-                reply_markup=main_menu()
-            )
-        return
-
-
-
     # ── Order Flow ──────────────────────────────────────────
     if user.id in order_drafts:
         draft = order_drafts[user.id]
@@ -631,6 +600,37 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
 
             order_drafts.pop(user.id)
+            return
+
+
+    # ── OSINT Lookup ────────────────────────────────────────
+    if user.id in lookup_waiting:
+        lookup_waiting.pop(user.id)
+        msg = await update.message.reply_text("🔎 Searching...")
+        try:
+            data    = leakosint_search(text)
+            records = [(db, rec) for db, d in data.get("List", {}).items() for rec in d.get("Data", [])]
+            lookup_pages[user.id] = {"records": records, "page": 0}
+            await msg.edit_text(format_page(records, 0), reply_markup=page_keyboard(user.id))
+        except Exception as e:
+            await msg.edit_text(f"❌ Failed: {e}")
+        return
+
+    # ── Order Status ────────────────────────────────────────
+    if user.id in status_waiting:
+        status_waiting.pop(user.id)
+        row = cursor.execute(
+            "SELECT product, status FROM orders WHERE order_id=? AND user_id=?",
+            (text.strip(), user.id)
+        ).fetchone()
+        if not row:
+            await update.message.reply_text("❌ Order Error - Please check your order and try again.")
+        else:
+            await update.message.reply_text(
+                f"📋 ORDER STATUS\n\n🆔 {text.strip()}\n📦 {row[0]}\n📌 {row[1]}",
+                reply_markup=main_menu()
+            )
+        return
 
 # =========================================================
 # ADMIN COMMANDS
