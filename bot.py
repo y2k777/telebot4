@@ -715,336 +715,6 @@ def ordered_breach_fields(record):
     return ordered
 
 
-LOOKUP_PAGE_SIZE = 10
-TELEGRAM_MSG_LIMIT = 4000
-SENSITIVE_BREACH_LABELS = {"SSN", "DLN", "Driver License", "Passport", "Password", "Hashed Password", "ID", "DOB"}
-
-
-def _humanize_key(key):
-    """Convert camelCase or snake_case keys to readable labels."""
-    if not key:
-        return str(key)
-    s = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", str(key))
-    s = s.replace("_", " ").strip()
-    if s.isupper():
-        return s
-    return s.title()
-
-
-def _platform_name(class_name):
-    """Turn osint.sx className into a readable platform label."""
-    name = (class_name or "Unknown").strip()
-    lower = name.lower()
-    for suffix in ("email", "phone", "username"):
-        if lower.endswith(suffix) and len(name) > len(suffix):
-            name = name[: -len(suffix)]
-            break
-    return _humanize_key(name) or class_name
-
-
-def _lookup_header(title, query, page, total, note=None):
-    pages = max(1, -(-total // LOOKUP_PAGE_SIZE))
-    plural = "s" if total != 1 else ""
-    lines = [
-        "━━━━━━━━━━━━━━━━━━",
-        title,
-        f"Query · {query}" if query else None,
-        note,
-        f"Page {page + 1}/{pages} · {total} result{plural}",
-        "━━━━━━━━━━━━━━━━━━",
-        "",
-    ]
-    return "\n".join(line for line in lines if line is not None) + "\n"
-
-
-def _field_line(label, value, sensitive=False):
-    label = normalize_breach_field(label) if label in BREACH_FIELD_ALIASES else _humanize_key(label)
-    if isinstance(value, str) and len(value) > 120:
-        value = value[:117] + "..."
-    prefix = "⚠ " if sensitive else ""
-    return f"{prefix}{label} · {value}"
-
-
-def _truncate_msg(text):
-    if len(text) <= TELEGRAM_MSG_LIMIT:
-        return text
-    return text[: TELEGRAM_MSG_LIMIT - 16].rstrip() + "\n\n… (truncated)"
-
-
-def _txt_header(title, query):
-    return f"{title}\nQuery · {query}\n{'─' * 36}\n\n"
-
-
-def format_endato_person_brief(person, index=None):
-    name = _endato_name(person)
-    age = person.get("age")
-    dob = person.get("dob")
-
-    title = name
-    if age:
-        title += f" · Age {age}"
-    elif dob:
-        title += f" · DOB {dob}"
-
-    prefix = f"#{index} · " if index else ""
-    lines = [f"{prefix}{title}"]
-
-    if person.get("tahoeId"):
-        lines.append(f"   ID · {person['tahoeId']}")
-
-    phones = _endato_list(person.get("phoneNumbers"), "phoneNumber")
-    if phones:
-        lines.append(f"   Phones · {phones}")
-
-    emails = _endato_list(person.get("emailAddresses"), "emailAddress")
-    if emails:
-        lines.append(f"   Emails · {emails}")
-
-    addrs = person.get("addresses") or []
-    if addrs:
-        addr = addrs[0].get("fullAddress") or addrs[0].get("city", "")
-        if addr:
-            extra = f" (+{len(addrs) - 1} more)" if len(addrs) > 1 else ""
-            lines.append(f"   Address · {addr}{extra}")
-
-    relatives = person.get("relativesSummary") or []
-    if relatives:
-        rel_names = []
-        for r in relatives[:3]:
-            rel_names.append(
-                " ".join(p for p in [r.get("firstName"), r.get("lastName")] if p)
-            )
-        rel_line = ", ".join(rel_names)
-        if len(relatives) > 3:
-            rel_line += f" (+{len(relatives) - 3} more)"
-        lines.append(f"   Relatives · {rel_line}")
-
-    indicators = person.get("indicators") or {}
-    active = [_humanize_key(k.replace("has", "")) for k, v in indicators.items() if v and str(v) != "0"]
-    if active:
-        lines.append(f"   Records · {', '.join(active[:5])}")
-
-    akas = person.get("akas") or []
-    if akas:
-        aka_names = []
-        for a in akas[:2]:
-            aka_names.append(
-                " ".join(p for p in [a.get("firstName"), a.get("lastName")] if p)
-            )
-        if aka_names:
-            extra = f" (+{len(akas) - 2} more)" if len(akas) > 2 else ""
-            lines.append(f"   AKAs · {', '.join(aka_names)}{extra}")
-
-    lines.append("────────────────")
-    return "\n".join(lines) + "\n"
-
-
-def format_endato_person_full(person, index=None):
-    prefix = f"#{index} · " if index else ""
-    text = f"{prefix}{_endato_name(person)}\n"
-    if person.get("tahoeId"):
-        text += f"   ID · {person['tahoeId']}\n"
-    if person.get("age"):
-        text += f"   Age · {person['age']}\n"
-    if person.get("dob"):
-        text += f"   DOB · {person['dob']}\n"
-
-    for label, key, subkey in (
-        ("Phones", "phoneNumbers", "phoneNumber"),
-        ("Emails", "emailAddresses", "emailAddress"),
-    ):
-        items = _endato_list(person.get(key), subkey, limit=50)
-        if items:
-            text += f"   {label} · {items}\n"
-
-    for addr in person.get("addresses") or []:
-        line = addr.get("fullAddress")
-        if not line:
-            parts = [
-                addr.get("houseNumber"), addr.get("streetName"), addr.get("streetType"),
-                addr.get("city"), addr.get("state"), addr.get("zip"),
-            ]
-            line = " ".join(p for p in parts if p)
-        if line:
-            text += f"   Address · {line}\n"
-
-    for r in person.get("relativesSummary") or []:
-        rname = " ".join(
-            p for p in [r.get("firstName"), r.get("middleName"), r.get("lastName")] if p
-        )
-        extra = f" ({r.get('relativeType')})" if r.get("relativeType") else ""
-        if r.get("dob"):
-            extra += f" · DOB {r['dob']}"
-        if rname:
-            text += f"   Relative · {rname}{extra}\n"
-
-    for a in person.get("associatesSummary") or []:
-        aname = " ".join(p for p in [a.get("firstName"), a.get("lastName")] if p)
-        if aname:
-            text += f"   Associate · {aname}\n"
-
-    indicators = person.get("indicators") or {}
-    active = [f"{_humanize_key(k.replace('has', ''))}" for k, v in indicators.items() if v and str(v) != "0"]
-    if active:
-        text += f"   Records · {', '.join(active)}\n"
-
-    for a in person.get("akas") or []:
-        aname = " ".join(
-            p for p in [a.get("firstName"), a.get("middleName"), a.get("lastName")] if p
-        )
-        if aname:
-            text += f"   AKA · {aname}\n"
-
-    return text + "\n"
-
-
-def format_endato_page(persons, page, query=""):
-    start = page * LOOKUP_PAGE_SIZE
-    chunk = persons[start : start + LOOKUP_PAGE_SIZE]
-    text = _lookup_header("👤 Enformion Person Search", query, page, len(persons))
-    for i, person in enumerate(chunk, start=start + 1):
-        text += format_endato_person_brief(person, index=i)
-    text += "◀ ▶ browse · 📥 download full report"
-    return _truncate_msg(text)
-
-
-def format_endato_txt(query, persons):
-    text = _txt_header("ENFORMION PERSON SEARCH", query)
-    for i, person in enumerate(persons, 1):
-        text += format_endato_person_full(person, index=i)
-        text += "─" * 36 + "\n\n"
-    return text
-
-
-def format_breach_free_page(records, page, query=""):
-    start = page * LOOKUP_PAGE_SIZE
-    chunk = records[start : start + LOOKUP_PAGE_SIZE]
-    text = _lookup_header(
-        "🔍 Breach Search",
-        query,
-        page,
-        len(records),
-        note="🔒 Free preview — sensitive fields hidden",
-    )
-    for i, (db_name, record) in enumerate(chunk, start=start + 1):
-        lines = []
-        hidden = 0
-        for key, val in record.items():
-            if not val:
-                continue
-            if is_free_blocked_field(key):
-                hidden += 1
-                continue
-            lines.append(_field_line(key, val))
-        text += f"#{i} · {db_name}\n"
-        for line in lines:
-            text += f"   {line}\n"
-        if hidden:
-            text += f"   🔒 {hidden} sensitive field(s) hidden — use Full Breach to unlock\n"
-        text += "────────────────\n"
-    text += "◀ ▶ browse · 📥 download"
-    return _truncate_msg(text)
-
-
-def format_breach_full_page(records, page, query=""):
-    start = page * LOOKUP_PAGE_SIZE
-    chunk = records[start : start + LOOKUP_PAGE_SIZE]
-    text = _lookup_header("🔍 Full Breach Search", query, page, len(records))
-    for i, (db_name, record) in enumerate(chunk, start=start + 1):
-        text += f"#{i} · {db_name}\n"
-        for key, val in ordered_breach_fields(record):
-            sensitive = key in SENSITIVE_BREACH_LABELS
-            text += f"   {_field_line(key, val, sensitive=sensitive)}\n"
-        text += "────────────────\n"
-    text += "◀ ▶ browse · 📥 download"
-    return _truncate_msg(text)
-
-
-def format_breach_free_txt(query, records):
-    text = _txt_header("BREACH SEARCH (FREE)", query)
-    for i, (db, record) in enumerate(records, 1):
-        text += f"#{i} · {db}\n"
-        for key, val in record.items():
-            if not val or is_free_blocked_field(key):
-                continue
-            text += f"   {_field_line(key, val)}\n"
-        text += "\n"
-    text += (
-        "─" * 36 + "\n"
-        "Hidden on free: Password, Hashed Password, SSN, ID, DLN, DOB.\n"
-        "Use Full Breach Search (1 credit) for all fields.\n"
-    )
-    return text
-
-
-def format_breach_full_txt(query, records):
-    text = _txt_header("FULL BREACH SEARCH", query)
-    for i, (db, record) in enumerate(records, 1):
-        text += f"#{i} · {db}\n"
-        for key, val in ordered_breach_fields(record):
-            sensitive = key in SENSITIVE_BREACH_LABELS
-            text += f"   {_field_line(key, val, sensitive=sensitive)}\n"
-        text += "\n"
-    return text
-
-
-def format_qosint_page(records, page):
-    return format_breach_free_page(records, page)
-
-
-def format_live_hit(hit, index=None):
-    platform = _platform_name(hit.get("className", "unknown"))
-    result = hit.get("result", {})
-    prefix = f"#{index} · " if index else ""
-    lines = [f"{prefix}{platform}"]
-
-    seen_keys = set()
-    for section in ("show", "full"):
-        block = result.get(section)
-        if not isinstance(block, dict):
-            continue
-        for key, val in block.items():
-            if key.startswith("__") or key in seen_keys:
-                continue
-            flat = _flatten_value(val)
-            if not flat:
-                continue
-            seen_keys.add(key)
-            lines.append(f"   {_field_line(key, flat)}")
-
-    if len(lines) == 1:
-        lines.append("   Status · Account found")
-    lines.append("────────────────")
-    return "\n".join(lines) + "\n"
-
-
-def format_live_page(records, page, query=""):
-    start = page * LOOKUP_PAGE_SIZE
-    chunk = records[start : start + LOOKUP_PAGE_SIZE]
-    text = _lookup_header("🌐 Live OSINT Lookup", query, page, len(records))
-    for i, hit in enumerate(chunk, start=start + 1):
-        text += format_live_hit(hit, index=i)
-    text += "◀ ▶ browse · 📥 download"
-    return _truncate_msg(text)
-
-
-def format_lookup_page(state, page):
-    kind = state.get("kind")
-    records = state["records"]
-    query = state.get("query", "")
-    if kind == "live":
-        return format_live_page(records, page, query)
-    if kind == "breach_full":
-        return format_breach_full_page(records, page, query)
-    if kind == "endato":
-        return format_endato_page(records, page, query)
-    return format_breach_free_page(records, page, query)
-
-
-def format_page(records, page):
-    return format_qosint_page(records, page)
-
-
 def leakosint_records(data):
     """Extract (database, record) tuples from a LeakOSINT response."""
     return [
@@ -1255,6 +925,259 @@ def _endato_list(items, key, limit=3):
     return ", ".join(vals) if vals else None
 
 
+def format_endato_person_brief(person):
+    name = _endato_name(person)
+    age = person.get("age")
+    dob = person.get("dob")
+    tahoe = person.get("tahoeId", "")
+
+    header = f"👤 {name}"
+    if age:
+        header += f" (Age {age})"
+    elif dob:
+        header += f" (DOB {dob})"
+    text = header + "\n"
+
+    if tahoe:
+        text += f"• ID: {tahoe}\n"
+
+    phones = _endato_list(person.get("phoneNumbers"), "phoneNumber")
+    if phones:
+        text += f"• Phones: {phones}\n"
+
+    emails = _endato_list(person.get("emailAddresses"), "emailAddress")
+    if emails:
+        text += f"• Emails: {emails}\n"
+
+    addrs = person.get("addresses") or []
+    if addrs:
+        addr = addrs[0].get("fullAddress") or addrs[0].get("city", "")
+        if addr:
+            text += f"• Address: {addr}\n"
+        if len(addrs) > 1:
+            text += f"• +{len(addrs) - 1} more address(es)\n"
+
+    relatives = person.get("relativesSummary") or []
+    if relatives:
+        rel_names = []
+        for r in relatives[:3]:
+            rel_names.append(
+                " ".join(p for p in [r.get("firstName"), r.get("lastName")] if p)
+            )
+        rel_line = ", ".join(rel_names)
+        if len(relatives) > 3:
+            rel_line += f" (+{len(relatives) - 3} more)"
+        text += f"• Relatives: {rel_line}\n"
+
+    indicators = person.get("indicators") or {}
+    active = [k.replace("has", "") for k, v in indicators.items() if v and str(v) != "0"]
+    if active:
+        text += f"• Records: {', '.join(active[:6])}\n"
+
+    akas = person.get("akas") or []
+    if akas:
+        aka_names = []
+        for a in akas[:2]:
+            aka_names.append(
+                " ".join(p for p in [a.get("firstName"), a.get("lastName")] if p)
+            )
+        if aka_names:
+            text += f"• AKAs: {', '.join(aka_names)}"
+            if len(akas) > 2:
+                text += f" (+{len(akas) - 2} more)"
+            text += "\n"
+
+    return text + "━━━━━━━━━━\n"
+
+
+def format_endato_person_full(person):
+    text = f"👤 {_endato_name(person)}\n"
+    if person.get("tahoeId"):
+        text += f"Tahoe ID: {person['tahoeId']}\n"
+    if person.get("age"):
+        text += f"Age: {person['age']}\n"
+    if person.get("dob"):
+        text += f"DOB: {person['dob']}\n"
+
+    for label, key, subkey in (
+        ("Phones", "phoneNumbers", "phoneNumber"),
+        ("Emails", "emailAddresses", "emailAddress"),
+    ):
+        items = _endato_list(person.get(key), subkey, limit=50)
+        if items:
+            text += f"{label}: {items}\n"
+
+    for addr in person.get("addresses") or []:
+        line = addr.get("fullAddress")
+        if not line:
+            parts = [
+                addr.get("houseNumber"), addr.get("streetName"), addr.get("streetType"),
+                addr.get("city"), addr.get("state"), addr.get("zip"),
+            ]
+            line = " ".join(p for p in parts if p)
+        if line:
+            text += f"Address: {line}\n"
+
+    for r in person.get("relativesSummary") or []:
+        rname = " ".join(
+            p for p in [r.get("firstName"), r.get("middleName"), r.get("lastName")] if p
+        )
+        extra = f" ({r.get('relativeType')})" if r.get("relativeType") else ""
+        if r.get("dob"):
+            extra += f" DOB:{r['dob']}"
+        if rname:
+            text += f"Relative: {rname}{extra}\n"
+
+    for a in person.get("associatesSummary") or []:
+        aname = " ".join(p for p in [a.get("firstName"), a.get("lastName")] if p)
+        if aname:
+            text += f"Associate: {aname}\n"
+
+    indicators = person.get("indicators") or {}
+    active = [f"{k}: {v}" for k, v in indicators.items() if v and str(v) != "0"]
+    if active:
+        text += "Indicators: " + ", ".join(active) + "\n"
+
+    for a in person.get("akas") or []:
+        aname = " ".join(
+            p for p in [a.get("firstName"), a.get("middleName"), a.get("lastName")] if p
+        )
+        if aname:
+            text += f"AKA: {aname}\n"
+
+    return text + "\n"
+
+
+def format_endato_page(persons, page):
+    total = len(persons)
+    pages = max(1, -(-total // 10))
+    text = f"Enformion Person Search — Page {page + 1}/{pages} — {total} results\n\n"
+    for person in persons[page * 10 : page * 10 + 10]:
+        text += format_endato_person_brief(person)
+    return text[:4000]
+
+
+def format_endato_txt(query, persons):
+    text = f"ENFORMION PERSON SEARCH — {query}\n{'=' * 40}\n\n"
+    for person in persons:
+        text += format_endato_person_full(person)
+        text += "-" * 40 + "\n"
+    return text
+
+
+def format_breach_free_page(records, page):
+    total = len(records)
+    pages = max(1, -(-total // 10))
+    text = f"Breach Search — Page {page + 1}/{pages} — {total} results\n"
+    text += "🔒 Free preview — sensitive IDs hidden\n\n"
+    for db_name, record in records[page * 10 : page * 10 + 10]:
+        text += f"📂 {db_name}\n"
+        hidden = 0
+        for key, val in record.items():
+            if not val:
+                continue
+            if is_free_blocked_field(key):
+                hidden += 1
+                continue
+            label = normalize_breach_field(key)
+            text += f"• {label}: {val}\n"
+        if hidden:
+            text += (
+                f"• 🔒 {hidden} sensitive field(s) hidden "
+                f"(password, SSN, ID, DLN, DOB) — unlock with Full Breach (1 credit)\n"
+            )
+        text += "━━━━━━━━━━\n"
+    return text[:4000]
+
+
+def format_breach_full_page(records, page):
+    total = len(records)
+    pages = max(1, -(-total // 10))
+    text = f"Full Breach Search — Page {page + 1}/{pages} — {total} results\n\n"
+    for db_name, record in records[page * 10 : page * 10 + 10]:
+        text += f"📂 {db_name}\n"
+        for key, val in ordered_breach_fields(record):
+            text += f"• {key}: {val}\n"
+        text += "━━━━━━━━━━\n"
+    return text[:4000]
+
+
+def format_breach_free_txt(query, records):
+    text = f"BREACH SEARCH (FREE) — {query}\n{'=' * 40}\n\n"
+    for db, record in records:
+        text += f"[{db}]\n"
+        for key, val in record.items():
+            if not val or is_free_blocked_field(key):
+                continue
+            label = normalize_breach_field(key)
+            text += f"  {label}: {val}\n"
+        text += "\n"
+    text += (
+        "\nHidden on free: Password, Hashed Password, SSN, ID, DLN, DOB.\n"
+        "Upgrade to Full Breach Search (1 credit) for all fields.\n"
+    )
+    return text
+
+
+def format_breach_full_txt(query, records):
+    text = f"FULL BREACH SEARCH — {query}\n{'=' * 40}\n\n"
+    for db, record in records:
+        text += f"[{db}]\n"
+        for key, val in ordered_breach_fields(record):
+            text += f"  {key}: {val}\n"
+        text += "\n"
+    return text
+
+
+def format_qosint_page(records, page):
+    return format_breach_free_page(records, page)
+
+
+def format_live_hit(hit):
+    class_name = hit.get("className", "unknown")
+    result = hit.get("result", {})
+    text = f"📂 {class_name}\n"
+    seen_keys = set()
+
+    for section in ("show", "full"):
+        block = result.get(section)
+        if not isinstance(block, dict):
+            continue
+        for key, val in block.items():
+            if key.startswith("__") or key in seen_keys:
+                continue
+            flat = _flatten_value(val)
+            if not flat:
+                continue
+            seen_keys.add(key)
+            text += f"• {key}: {flat}\n"
+    return text + "━━━━━━━━━━\n"
+
+
+def format_live_page(records, page):
+    total = len(records)
+    pages = max(1, -(-total // 10))
+    text = f"Live OSINT Lookup — Page {page + 1}/{pages} — {total} hits\n\n"
+    for hit in records[page * 10 : page * 10 + 10]:
+        text += format_live_hit(hit)
+    return text[:4000]
+
+
+def format_lookup_page(state, page):
+    kind = state.get("kind")
+    records = state["records"]
+    if kind == "live":
+        return format_live_page(records, page)
+    if kind == "breach_full":
+        return format_breach_full_page(records, page)
+    if kind == "endato":
+        return format_endato_page(records, page)
+    return format_breach_free_page(records, page)
+
+
+def format_page(records, page):
+    return format_qosint_page(records, page)
+
 def build_lookup_download(state):
     """Build filename, text content, and caption for a lookup download."""
     kind = state.get("kind")
@@ -1275,9 +1198,9 @@ def build_lookup_download(state):
         )
     if kind == "live":
         module_type = state.get("module_type", "")
-        text = _txt_header(f"LIVE OSINT LOOKUP ({module_type})", query)
-        for i, hit in enumerate(records, 1):
-            text += format_live_hit(hit, index=i) + "\n"
+        text = f"LIVE OSINT LOOKUP — {query} ({module_type})\n{'=' * 40}\n\n"
+        for hit in records:
+            text += format_live_hit(hit) + "\n"
         return (
             "live_osint_results.txt",
             text,
@@ -1298,7 +1221,7 @@ def page_keyboard(user_id):
     row = []
     if page > 0:
         row.append(InlineKeyboardButton("◀", callback_data="lp"))
-    if (page + 1) * LOOKUP_PAGE_SIZE < total:
+    if (page + 1) * 10 < total:
         row.append(InlineKeyboardButton("▶", callback_data="ln"))
     buttons = []
     if row:
@@ -1997,7 +1920,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     "records": records, "page": 0, "kind": "breach_free", "query": query,
                 }
                 await msg.edit_text(
-                    format_breach_free_page(records, 0, query),
+                    format_breach_free_page(records, 0),
                     reply_markup=page_keyboard(user.id),
                 )
             except Exception as e:
@@ -2032,7 +1955,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     "records": records, "page": 0, "kind": "breach_full", "query": query,
                 }
                 await msg.edit_text(
-                    format_breach_full_page(records, 0, query),
+                    format_breach_full_page(records, 0),
                     reply_markup=page_keyboard(user.id),
                 )
             except Exception as e:
@@ -2073,7 +1996,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     "query": query, "module_type": module_type,
                 }
                 await msg.edit_text(
-                    format_live_page(hits, 0, query),
+                    format_live_page(hits, 0),
                     reply_markup=page_keyboard(user.id),
                 )
             except Exception as e:
@@ -2111,7 +2034,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     "records": persons, "page": 0, "kind": "endato", "query": query,
                 }
                 await msg.edit_text(
-                    format_endato_page(persons, 0, query),
+                    format_endato_page(persons, 0),
                     reply_markup=page_keyboard(user.id),
                 )
             except Exception as e:
